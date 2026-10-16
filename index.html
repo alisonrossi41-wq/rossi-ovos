@@ -247,7 +247,7 @@ render();status("Salvo neste aparelho");
   if(cfg){cfg.repo=String(cfg.repo||"").replace(/\s+/g,"");cfg.token=String(cfg.token||"").replace(/[^\x21-\x7e]/g,"")}
   const enc=s=>{let r="";new TextEncoder().encode(s).forEach(c=>r+=String.fromCharCode(c));return btoa(r)};
   const dec=b=>new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g,"")),c=>c.charCodeAt(0)));
-  const api=(method,body)=>fetch("https://api.github.com/repos/"+cfg.repo+"/contents/"+FILE,{method,cache:"no-store",headers:Object.assign({Accept:"application/vnd.github+json",Authorization:"Bearer "+cfg.token},body?{"Content-Type":"application/json"}:{}),body:body?JSON.stringify(body):undefined});
+  const api=(method,body)=>fetch("https://api.github.com/repos/"+cfg.repo+"/contents/"+FILE+(method==="GET"?"?t="+Date.now():""),{method,headers:Object.assign({Authorization:"Bearer "+cfg.token},body?{"Content-Type":"application/json"}:{}),body:body?JSON.stringify(body):undefined});
   const fail=async r=>{const e=new Error("http");e.code=r.status;try{e.detail=(await r.json()).message}catch(x){}return e};
   const why=e=>{const d=e&&e.detail?" — "+e.detail:"";return e&&e.code===401?"token inválido ou expirado"+d:e&&e.code===403?"token sem permissão"+d:e&&e.code===404?"repositório não encontrado"+d:e&&e.code?"erro "+e.code+" do GitHub"+d:"sem conexão com o GitHub ("+((e&&e.message)||e)+")"};
   async function get(){
@@ -298,7 +298,9 @@ render();status("Salvo neste aparelho");
         if(!a)msg="este aparelho não alcança api.github.com (rede, VPN, bloqueador de anúncios ou antivírus)";
         else{
           try{await fetch("https://api.github.com/user",{cache:"no-store",headers:{Authorization:"Bearer "+t}});b=true}catch(x){}
-          msg=b?"falha ao acessar o repositório ("+((e&&e.message)||e)+"); token com "+t.length+" caracteres":"o GitHub abre, mas o pedido com o token foi barrado (token com "+t.length+" caracteres); teste em aba anônima ou sem extensões";
+          let c=false;
+          if(b){try{await fetch("https://api.github.com/repos/"+cfg.repo,{headers:{Authorization:"Bearer "+t}});c=true}catch(x){}}
+          msg=!b?"o GitHub abre, mas o pedido com o token foi barrado (token com "+t.length+" caracteres); teste em aba anônima ou sem extensões":!c?"não consegui abrir o repositório \""+cfg.repo+"\"; confira se o nome está exatamente usuario/repositorio":"falha ao ler o arquivo de dados em \""+cfg.repo+"\" ("+((e&&e.message)||e)+")";
         }
       }
       cfg=null;er.textContent="Não deu certo: "+msg+".";return}
