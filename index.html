@@ -208,7 +208,7 @@ function save(){
   try{localStorage.setItem("granja:v1",JSON.stringify(S))}catch(e){}
   if(!ref){status("Salvo neste aparelho");return}
   status("Salvando…");clearTimeout(timer);
-  timer=setTimeout(()=>{ref.set(S).then(()=>{failed=false;status(JSON.stringify(S).length>200000?"Sincronizado — dados perto do limite, avise para arquivar":"Sincronizado")}).catch(e=>{failed=true;status("Erro ao sincronizar ("+((e&&e.code)||String(e))+"); salvo neste aparelho")})},300);
+  timer=setTimeout(()=>{ref.set(S).then(()=>{failed=false;status(JSON.stringify(S).length>200000?"Sincronizado — dados perto do limite, avise para arquivar":"Sincronizado")}).catch(e=>{failed=true;status("Erro ao sincronizar ("+((e&&e.code)||String(e))+(e&&e.detail?": "+e.detail:"")+"); salvo neste aparelho")})},300);
 }
 
 document.addEventListener("click",ev=>{
@@ -248,12 +248,12 @@ render();status("Salvo neste aparelho");
   const enc=s=>{let r="";new TextEncoder().encode(s).forEach(c=>r+=String.fromCharCode(c));return btoa(r)};
   const dec=b=>new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g,"")),c=>c.charCodeAt(0)));
   const api=(method,body)=>fetch("https://api.github.com/repos/"+cfg.repo+"/contents/"+FILE,{method,cache:"no-store",headers:Object.assign({Accept:"application/vnd.github+json",Authorization:"Bearer "+cfg.token},body?{"Content-Type":"application/json"}:{}),body:body?JSON.stringify(body):undefined});
-  const fail=r=>{const e=new Error("http");e.code=r.status;return e};
-  const why=e=>e&&e.code===401?"token inválido ou expirado":e&&e.code===403?"token sem permissão":e&&e.code===404?"repositório não encontrado":e&&e.code?"erro "+e.code+" do GitHub":"sem conexão com o GitHub ("+((e&&e.message)||e)+")";
+  const fail=async r=>{const e=new Error("http");e.code=r.status;try{e.detail=(await r.json()).message}catch(x){}return e};
+  const why=e=>{const d=e&&e.detail?" — "+e.detail:"";return e&&e.code===401?"token inválido ou expirado"+d:e&&e.code===403?"token sem permissão"+d:e&&e.code===404?"repositório não encontrado"+d:e&&e.code?"erro "+e.code+" do GitHub"+d:"sem conexão com o GitHub ("+((e&&e.message)||e)+")"};
   async function get(){
     const r=await api("GET");
     if(r.status===404){sha=null;return null}
-    if(!r.ok)throw fail(r);
+    if(!r.ok)throw await fail(r);
     const j=await r.json();sha=j.sha;
     return JSON.parse(dec(j.content));
   }
@@ -262,7 +262,7 @@ render();status("Salvo neste aparelho");
     if(sha)body.sha=sha;
     let r=await api("PUT",body);
     if(r.status===409||r.status===422){await get();if(sha)body.sha=sha;else delete body.sha;r=await api("PUT",body)}
-    if(!r.ok)throw fail(r);
+    if(!r.ok)throw await fail(r);
     sha=(await r.json()).content.sha;
   }
   async function pull(){
@@ -290,7 +290,18 @@ render();status("Salvo neste aparelho");
     ev.preventDefault();er.textContent="Testando…";
     const repo=$("#lgr").value.replace(/\s+/g,"").replace(/^https?:\/\/github\.com\//,"").replace(/\.git$/,"").replace(/\/$/,"");
     cfg={repo,token:$("#lgt").value.replace(/[^\x21-\x7e]/g,"")};
-    try{await get()}catch(e){cfg=null;er.textContent="Não deu certo: "+why(e)+".";return}
+    try{await get()}catch(e){
+      let msg=why(e);
+      if(!e.code){
+        const t=cfg.token;let a=false,b=false;
+        try{await fetch("https://api.github.com/zen",{cache:"no-store"});a=true}catch(x){}
+        if(!a)msg="este aparelho não alcança api.github.com (rede, VPN, bloqueador de anúncios ou antivírus)";
+        else{
+          try{await fetch("https://api.github.com/user",{cache:"no-store",headers:{Authorization:"Bearer "+t}});b=true}catch(x){}
+          msg=b?"falha ao acessar o repositório ("+((e&&e.message)||e)+"); token com "+t.length+" caracteres":"o GitHub abre, mas o pedido com o token foi barrado (token com "+t.length+" caracteres); teste em aba anônima ou sem extensões";
+        }
+      }
+      cfg=null;er.textContent="Não deu certo: "+msg+".";return}
     try{localStorage.setItem(KEY,JSON.stringify(cfg))}catch(e){}
     $("#lgt").value="";ov.classList.remove("on");on();
   });
